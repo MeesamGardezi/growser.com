@@ -78,18 +78,30 @@ document.addEventListener('DOMContentLoaded', async () => {
   omnibox.addEventListener('focus', () => omnibox.select());
 
   // New tab button (horizontal)
-  newTabBtn?.addEventListener('click', () => TabManager.createTab());
+  newTabBtn?.addEventListener('click', () => {
+    TabManager.createTab().catch((err) => console.error('[main] createTab failed:', err));
+  });
 
   // New tab button (vertical sidebar)
-  sidebarNewTabBtn?.addEventListener('click', () => TabManager.createTab());
+  sidebarNewTabBtn?.addEventListener('click', () => {
+    TabManager.createTab().catch((err) => console.error('[main] createTab failed:', err));
+  });
 
   // Toggle vertical tabs
-  toggleSidebarBtn?.addEventListener('click', () => TabManager.toggleVerticalTabs());
+  toggleSidebarBtn?.addEventListener('click', () => {
+    TabManager.toggleVerticalTabs().catch((err) => console.error('[main] toggleVerticalTabs failed:', err));
+  });
 
   // Back / Forward / Refresh
-  backBtn?.addEventListener('click', () => TabManager.navigateBack());
-  forwardBtn?.addEventListener('click', () => TabManager.navigateForward());
-  refreshBtn?.addEventListener('click', () => TabManager.reload());
+  backBtn?.addEventListener('click', () => {
+    TabManager.navigateBack().catch((err) => console.error('[main] navigateBack failed:', err));
+  });
+  forwardBtn?.addEventListener('click', () => {
+    TabManager.navigateForward().catch((err) => console.error('[main] navigateForward failed:', err));
+  });
+  refreshBtn?.addEventListener('click', () => {
+    TabManager.reload().catch((err) => console.error('[main] reload failed:', err));
+  });
 
   // 4. Keyboard shortcuts
   document.addEventListener('keydown', (e) => {
@@ -98,11 +110,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     if (mod && e.key === 't') {
       e.preventDefault();
-      TabManager.createTab();
+      TabManager.createTab().catch((err) => console.error('[main] createTab failed:', err));
     }
     if (mod && e.key === 'w') {
       e.preventDefault();
-      if (TabManager.activeTabId) TabManager.closeTab(TabManager.activeTabId);
+      if (TabManager.activeTabId) {
+        TabManager.closeTab(TabManager.activeTabId).catch((err) => console.error('[main] closeTab failed:', err));
+      }
     }
     if (mod && e.key === 'l') {
       e.preventDefault();
@@ -111,7 +125,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     if (mod && e.shiftKey && (e.key === 'b' || e.key === 'B')) {
       e.preventDefault();
-      TabManager.toggleVerticalTabs();
+      TabManager.toggleVerticalTabs().catch((err) => console.error('[main] toggleVerticalTabs failed:', err));
     }
   });
 
@@ -119,6 +133,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   let resizeTimer = 0;
   window.addEventListener('resize', () => {
     clearTimeout(resizeTimer);
+    // Invalidate cached frame offset — the titlebar may appear/disappear when
+    // toggling fullscreen or restoring the window, so recompute on next position.
+    TabManager._frameOffset = null;
     resizeTimer = window.setTimeout(() => {
       TabManager._resizeActiveWebview();
     }, 150);

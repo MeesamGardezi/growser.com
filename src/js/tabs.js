@@ -38,6 +38,9 @@ const TabManager = {
   /** @type {Record<string, number>} Current index in each tab's history stack */
   _tabHistoryIdx: {},
 
+  /** @type {{ x: number, y: number } | null} Cached window frame offset (CSD titlebar on Linux) */
+  _frameOffset: null,
+
   /** Whether vertical tabs mode is active */
   verticalTabs: false,
 
@@ -160,10 +163,15 @@ const TabManager = {
     }
 
     // Navigate the existing webview via Rust — no destroy/recreate
-    await window.__TAURI__.core.invoke('navigate_webview', { label, url });
+    try {
+      await window.__TAURI__.core.invoke('navigate_webview', { label, url });
+    } catch (err) {
+      console.error('[tabs] navigateTo: navigate_webview failed:', err);
+      throw err;
+    }
     console.log('[tabs] navigateTo: navigate_webview invoked');
 
-    // Update JS history: truncate forward entries, push new URL
+    // Update JS history only after successful navigation
     const id = tab.id;
     const idx = this._tabHistoryIdx[id] ?? -1;
     const stack = this._tabHistories[id] ?? [];
@@ -194,10 +202,19 @@ const TabManager = {
 
     const newIdx = idx - 1;
     const url = this._tabHistories[id][newIdx];
-    this._tabHistoryIdx[id] = newIdx;
 
     const label = this._labels[id];
-    if (label) await window.__TAURI__.core.invoke('navigate_webview', { label, url });
+    if (label) {
+      try {
+        await window.__TAURI__.core.invoke('navigate_webview', { label, url });
+      } catch (err) {
+        console.error('[tabs] navigateBack: navigate_webview failed:', err);
+        return;
+      }
+    }
+
+    // Update state only after successful navigation
+    this._tabHistoryIdx[id] = newIdx;
 
     const tab = this.tabs.find((t) => t.id === id);
     if (tab) { tab.url = url; tab.title = url; }
@@ -221,10 +238,19 @@ const TabManager = {
 
     const newIdx = idx + 1;
     const url = stack[newIdx];
-    this._tabHistoryIdx[id] = newIdx;
 
     const label = this._labels[id];
-    if (label) await window.__TAURI__.core.invoke('navigate_webview', { label, url });
+    if (label) {
+      try {
+        await window.__TAURI__.core.invoke('navigate_webview', { label, url });
+      } catch (err) {
+        console.error('[tabs] navigateForward: navigate_webview failed:', err);
+        return;
+      }
+    }
+
+    // Update state only after successful navigation
+    this._tabHistoryIdx[id] = newIdx;
 
     const tab = this.tabs.find((t) => t.id === id);
     if (tab) { tab.url = url; tab.title = url; }
@@ -247,7 +273,11 @@ const TabManager = {
     const label = this._labels[id];
     if (!label) return;
     const target = tab.url || `${window.location.origin}/pages/newtab.html`;
-    await window.__TAURI__.core.invoke('navigate_webview', { label, url: target });
+    try {
+      await window.__TAURI__.core.invoke('navigate_webview', { label, url: target });
+    } catch (err) {
+      console.error('[tabs] reload: navigate_webview failed:', err);
+    }
     console.log('[tabs] reload:', target);
   },
 
@@ -262,7 +292,11 @@ const TabManager = {
 
     const wv = this._webviews[id];
     if (wv) {
-      await wv.close();
+      try {
+        await wv.close();
+      } catch (err) {
+        console.error('[tabs] closeTab: wv.close() failed:', err);
+      }
       delete this._webviews[id];
       delete this._labels[id];
     }
@@ -306,18 +340,26 @@ const TabManager = {
     await new Promise((r) => requestAnimationFrame(r));
     const rect = this._getContentRect();
     console.log('[tabs] switchTo rect:', JSON.stringify(rect));
-    const { LogicalPosition, LogicalSize } = window.__TAURI__.dpi;
+
+    const dpi = window.__TAURI__?.dpi;
+    if (!dpi) {
+      console.error('[tabs] switchTo: window.__TAURI__.dpi not available');
+      return;
+    }
+    const { LogicalPosition, LogicalSize } = dpi;
+    const offset = await this._getFrameOffset();
 
     for (const t of this.tabs) {
       const wv = this._webviews[t.id];
       if (!wv) continue;
       if (t.id === id) {
-        console.log('[tabs] positioning webview', t.id, 'at', rect.x, rect.y, rect.width, rect.height);
+        const cx = offset.cssToLogical;
+        console.log('[tabs] positioning webview', t.id, 'at', rect.x * cx + offset.x, rect.y * cx + offset.y, rect.width * cx, rect.height * cx);
         // Show first, then reposition — setPosition may be ignored on
         // hidden webviews on some platforms.
         await wv.show();
-        await wv.setPosition(new LogicalPosition(rect.x, rect.y));
-        await wv.setSize(new LogicalSize(rect.width, rect.height));
+        await wv.setPosition(new LogicalPosition(rect.x * cx + offset.x, rect.y * cx + offset.y));
+        await wv.setSize(new LogicalSize(rect.width * cx, rect.height * cx));
         console.log('[tabs] webview shown:', t.id);
       } else {
         await wv.hide();
@@ -391,14 +433,14 @@ const TabManager = {
 
       el.addEventListener('click', (e) => {
         if (/** @type {HTMLElement} */ (e.target).dataset.close) return;
-        this.switchTo(tab.id);
+        this.switchTo(tab.id).catch((err) => console.error('[tabs] switchTo failed:', err));
       });
 
       const closeBtn = el.querySelector('.tab-close');
       if (closeBtn) {
         closeBtn.addEventListener('click', (e) => {
           e.stopPropagation();
-          this.closeTab(tab.id);
+          this.closeTab(tab.id).catch((err) => console.error('[tabs] closeTab failed:', err));
         });
       }
 
@@ -432,10 +474,14 @@ const TabManager = {
     const wv = this._webviews[id];
     if (!wv) return;
 
+    const dpi = window.__TAURI__?.dpi;
+    if (!dpi) return;
+    const { LogicalPosition, LogicalSize } = dpi;
     const rect = this._getContentRect();
-    const { LogicalPosition, LogicalSize } = window.__TAURI__.dpi;
-    await wv.setPosition(new LogicalPosition(rect.x, rect.y));
-    await wv.setSize(new LogicalSize(rect.width, rect.height));
+    const offset = await this._getFrameOffset();
+    const cx = offset.cssToLogical;
+    await wv.setPosition(new LogicalPosition(rect.x * cx + offset.x, rect.y * cx + offset.y));
+    await wv.setSize(new LogicalSize(rect.width * cx, rect.height * cx));
   },
 
   /**
@@ -457,6 +503,56 @@ const TabManager = {
     };
     console.log('[tabs] _getContentRect:', rect);
     return rect;
+  },
+
+  /**
+   * Compute the window frame offset and CSS→Tauri logical pixel scale.
+   *
+   * On Linux with GTK client-side decorations (CSD) the GtkFixed container that
+   * holds child webviews covers the ENTIRE GtkApplicationWindow drawing area,
+   * including the CSD header bar.  That means child-webview positions are relative
+   * to the GTK window's outer top-left, while getBoundingClientRect() is relative
+   * to the HTML viewport (which starts below the header bar).
+   *
+   * innerPosition() and outerPosition() both return the GTK window origin on Linux
+   * (their difference is always 0), so we instead derive the header-bar height from
+   * window.screenY: that property gives the HTML viewport's y position on screen in
+   * CSS pixels, so (window.screenY × DPR − outerPosition.y) yields the header bar
+   * height in physical pixels.
+   *
+   * cssToLogical handles the rare case where the browser's devicePixelRatio differs
+   * from Tauri's integer scaleFactor (fractional-DPI setups on some Linux desktops).
+   *
+   * Result is cached; call with _frameOffset = null to invalidate (e.g. on resize).
+   * @returns {Promise<{ x: number, y: number, cssToLogical: number }>}
+   */
+  async _getFrameOffset() {
+    if (this._frameOffset !== null) return this._frameOffset;
+    try {
+      const { getCurrentWindow } = window.__TAURI__.window;
+      const win = getCurrentWindow();
+      const [outerPos, scale] = await Promise.all([
+        win.outerPosition(),  // physical screen coords of GTK window outer top-left
+        win.scaleFactor(),    // Tauri/GTK integer scale factor
+      ]);
+      // Convert the HTML viewport's screen position to physical pixels and subtract
+      // the GTK window's physical y to get the CSD header bar height.
+      const viewportPhysicalY = window.screenY * window.devicePixelRatio;
+      const headerPhysical = Math.max(0, viewportPhysicalY - outerPos.y);
+      // Factor to convert CSS pixels (getBoundingClientRect) → Tauri logical pixels.
+      // Usually 1; differs only on fractional-DPI systems (e.g. GTK scale 1, DPR 1.25).
+      const cssToLogical = window.devicePixelRatio / scale;
+      this._frameOffset = {
+        x: 0,
+        y: headerPhysical / scale,
+        cssToLogical,
+      };
+      console.log('[tabs] frame offset:', JSON.stringify(this._frameOffset));
+    } catch (err) {
+      console.warn('[tabs] _getFrameOffset failed, using zero offset:', err);
+      this._frameOffset = { x: 0, y: 0, cssToLogical: 1 };
+    }
+    return this._frameOffset;
   },
 
   /**
