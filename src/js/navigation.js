@@ -44,7 +44,7 @@ const Navigation = {
    * @param {string} [engineTemplate]
    * @returns {string}
    */
-  buildSearchUrl(query, engineTemplate = 'https://www.google.com/search?q=%s') {
+  buildSearchUrl(query, engineTemplate = 'https://duckduckgo.com/?q=%s') {
     const url = engineTemplate.replace('%s', encodeURIComponent(query));
     console.log('[nav] buildSearchUrl:', url);
     return url;

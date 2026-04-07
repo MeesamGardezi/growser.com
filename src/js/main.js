@@ -133,6 +133,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   let resizeTimer = 0;
   window.addEventListener('resize', () => {
     clearTimeout(resizeTimer);
+    // Invalidate cached frame offset — the titlebar may appear/disappear when
+    // toggling fullscreen or restoring the window, so recompute on next position.
+    TabManager._frameOffset = null;
     resizeTimer = window.setTimeout(() => {
       TabManager._resizeActiveWebview();
     }, 150);
