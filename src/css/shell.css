@@ -26,7 +26,7 @@ html, body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   font-size: 13px;
   color: var(--text);
-  background: var(--bg);
+  background: transparent;
   user-select: none;
   -webkit-user-select: none;
 }
@@ -329,7 +329,7 @@ html, body {
   min-height: 0;
   position: relative;
   overflow: hidden;
-  background: var(--bg-surface);
+  background: transparent;
 }
 
 /* ── Status bar ── */
@@ -348,4 +348,56 @@ html, body {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+
+/* ── Fullscreen overlay ── */
+#fullscreen-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: var(--bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#fullscreen-overlay.hidden {
+  display: none;
+}
+
+.fullscreen-prompt {
+  text-align: center;
+}
+
+.fullscreen-icon {
+  font-size: 48px;
+  margin-bottom: 12px;
+  color: var(--accent);
+}
+
+.fullscreen-prompt h2 {
+  font-size: 20px;
+  font-weight: 500;
+  margin-bottom: 6px;
+}
+
+.fullscreen-prompt p {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-bottom: 20px;
+}
+
+#fullscreen-btn {
+  padding: 8px 24px;
+  border: none;
+  border-radius: 6px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 14px;
+  cursor: pointer;
+  transition: filter 0.15s;
+}
+
+#fullscreen-btn:hover {
+  filter: brightness(1.15);
 }

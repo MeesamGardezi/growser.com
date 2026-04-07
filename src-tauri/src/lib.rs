@@ -21,14 +21,7 @@ pub fn run() {
         )
         .plugin(tauri_plugin_fs::init())
         .invoke_handler(tauri::generate_handler![commands::navigate_webview])
-        .setup(|app| {
-            // Open devtools in dev builds so JS console.log is visible
-            #[cfg(debug_assertions)]
-            {
-                if let Some(window) = app.get_webview_window("main") {
-                    window.open_devtools();
-                }
-            }
+        .setup(|_app| {
             Ok(())
         })
         .run(tauri::generate_context!())
