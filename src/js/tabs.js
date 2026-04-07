@@ -353,12 +353,13 @@ const TabManager = {
       const wv = this._webviews[t.id];
       if (!wv) continue;
       if (t.id === id) {
-        console.log('[tabs] positioning webview', t.id, 'at', rect.x + offset.x, rect.y + offset.y, rect.width, rect.height);
+        const cx = offset.cssToLogical;
+        console.log('[tabs] positioning webview', t.id, 'at', rect.x * cx + offset.x, rect.y * cx + offset.y, rect.width * cx, rect.height * cx);
         // Show first, then reposition — setPosition may be ignored on
         // hidden webviews on some platforms.
         await wv.show();
-        await wv.setPosition(new LogicalPosition(rect.x + offset.x, rect.y + offset.y));
-        await wv.setSize(new LogicalSize(rect.width, rect.height));
+        await wv.setPosition(new LogicalPosition(rect.x * cx + offset.x, rect.y * cx + offset.y));
+        await wv.setSize(new LogicalSize(rect.width * cx, rect.height * cx));
         console.log('[tabs] webview shown:', t.id);
       } else {
         await wv.hide();
@@ -478,8 +479,9 @@ const TabManager = {
     const { LogicalPosition, LogicalSize } = dpi;
     const rect = this._getContentRect();
     const offset = await this._getFrameOffset();
-    await wv.setPosition(new LogicalPosition(rect.x + offset.x, rect.y + offset.y));
-    await wv.setSize(new LogicalSize(rect.width, rect.height));
+    const cx = offset.cssToLogical;
+    await wv.setPosition(new LogicalPosition(rect.x * cx + offset.x, rect.y * cx + offset.y));
+    await wv.setSize(new LogicalSize(rect.width * cx, rect.height * cx));
   },
 
   /**
@@ -504,30 +506,51 @@ const TabManager = {
   },
 
   /**
-   * Compute the window frame offset (CSD titlebar height on Linux) in logical pixels.
-   * On platforms where child-webview positions are relative to the outer window frame
-   * rather than the HTML viewport, this offset must be added to getBoundingClientRect
-   * values when calling setPosition.  Result is cached after the first successful call.
-   * @returns {Promise<{ x: number, y: number }>}
+   * Compute the window frame offset and CSS→Tauri logical pixel scale.
+   *
+   * On Linux with GTK client-side decorations (CSD) the GtkFixed container that
+   * holds child webviews covers the ENTIRE GtkApplicationWindow drawing area,
+   * including the CSD header bar.  That means child-webview positions are relative
+   * to the GTK window's outer top-left, while getBoundingClientRect() is relative
+   * to the HTML viewport (which starts below the header bar).
+   *
+   * innerPosition() and outerPosition() both return the GTK window origin on Linux
+   * (their difference is always 0), so we instead derive the header-bar height from
+   * window.screenY: that property gives the HTML viewport's y position on screen in
+   * CSS pixels, so (window.screenY × DPR − outerPosition.y) yields the header bar
+   * height in physical pixels.
+   *
+   * cssToLogical handles the rare case where the browser's devicePixelRatio differs
+   * from Tauri's integer scaleFactor (fractional-DPI setups on some Linux desktops).
+   *
+   * Result is cached; call with _frameOffset = null to invalidate (e.g. on resize).
+   * @returns {Promise<{ x: number, y: number, cssToLogical: number }>}
    */
   async _getFrameOffset() {
     if (this._frameOffset !== null) return this._frameOffset;
     try {
       const { getCurrentWindow } = window.__TAURI__.window;
       const win = getCurrentWindow();
-      const [inner, outer, scale] = await Promise.all([
-        win.innerPosition(),
-        win.outerPosition(),
-        win.scaleFactor(),
+      const [outerPos, scale] = await Promise.all([
+        win.outerPosition(),  // physical screen coords of GTK window outer top-left
+        win.scaleFactor(),    // Tauri/GTK integer scale factor
       ]);
+      // Convert the HTML viewport's screen position to physical pixels and subtract
+      // the GTK window's physical y to get the CSD header bar height.
+      const viewportPhysicalY = window.screenY * window.devicePixelRatio;
+      const headerPhysical = Math.max(0, viewportPhysicalY - outerPos.y);
+      // Factor to convert CSS pixels (getBoundingClientRect) → Tauri logical pixels.
+      // Usually 1; differs only on fractional-DPI systems (e.g. GTK scale 1, DPR 1.25).
+      const cssToLogical = window.devicePixelRatio / scale;
       this._frameOffset = {
-        x: (inner.x - outer.x) / scale,
-        y: (inner.y - outer.y) / scale,
+        x: 0,
+        y: headerPhysical / scale,
+        cssToLogical,
       };
       console.log('[tabs] frame offset:', JSON.stringify(this._frameOffset));
     } catch (err) {
       console.warn('[tabs] _getFrameOffset failed, using zero offset:', err);
-      this._frameOffset = { x: 0, y: 0 };
+      this._frameOffset = { x: 0, y: 0, cssToLogical: 1 };
     }
     return this._frameOffset;
   },
