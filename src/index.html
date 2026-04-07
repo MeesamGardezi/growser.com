@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Growser</title>
+  <link rel="stylesheet" href="css/shell.css" />
+</head>
+<body>
+  <div id="shell">
+    <!-- Sidebar (vertical tabs) -->
+    <div id="sidebar" class="hidden">
+      <div id="sidebar-tabs"></div>
+      <button id="sidebar-new-tab-btn" title="New Tab (Ctrl+T)">+ New Tab</button>
+    </div>
+
+    <!-- Main column -->
+    <div id="main-col">
+      <!-- Tab bar (horizontal mode) -->
+      <div id="tab-bar">
+        <div id="tab-strip"></div>
+        <button id="new-tab-btn" title="New Tab (Ctrl+T)">+</button>
+      </div>
+
+      <!-- Toolbar -->
+      <div id="toolbar">
+        <button id="toggle-sidebar-btn" title="Toggle vertical tabs (⌘⇧B)">&#9776;</button>
+        <button id="back-btn" title="Back" disabled>&#9664;</button>
+        <button id="forward-btn" title="Forward" disabled>&#9654;</button>
+        <button id="refresh-btn" title="Refresh">&#8635;</button>
+        <div id="omnibox-wrapper">
+          <input
+            id="omnibox"
+            type="text"
+            placeholder="Search or enter URL"
+            autocomplete="off"
+            spellcheck="false"
+          />
+          <div id="suggestions" class="hidden"></div>
+        </div>
+        <button id="go-btn" title="Go">&#10132;</button>
+        <button id="menu-btn" title="Menu">&#8942;</button>
+      </div>
+
+      <!-- Content area — browser tabs render here -->
+      <div id="content-area"></div>
+
+      <!-- Status bar -->
+      <div id="status-bar">
+        <span id="status-text"></span>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/db.js"></script>
+  <script src="js/ipc.js"></script>
+  <script src="js/navigation.js"></script>
+  <script src="js/tabs.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>
