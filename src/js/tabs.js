@@ -38,6 +38,9 @@ const TabManager = {
   /** @type {Record<string, number>} Current index in each tab's history stack */
   _tabHistoryIdx: {},
 
+  /** @type {{ x: number, y: number } | null} Cached window frame offset (CSD titlebar on Linux) */
+  _frameOffset: null,
+
   /** Whether vertical tabs mode is active */
   verticalTabs: false,
 
@@ -160,10 +163,15 @@ const TabManager = {
     }
 
     // Navigate the existing webview via Rust — no destroy/recreate
-    await window.__TAURI__.core.invoke('navigate_webview', { label, url });
+    try {
+      await window.__TAURI__.core.invoke('navigate_webview', { label, url });
+    } catch (err) {
+      console.error('[tabs] navigateTo: navigate_webview failed:', err);
+      throw err;
+    }
     console.log('[tabs] navigateTo: navigate_webview invoked');
 
-    // Update JS history: truncate forward entries, push new URL
+    // Update JS history only after successful navigation
     const id = tab.id;
     const idx = this._tabHistoryIdx[id] ?? -1;
     const stack = this._tabHistories[id] ?? [];
@@ -194,10 +202,19 @@ const TabManager = {
 
     const newIdx = idx - 1;
     const url = this._tabHistories[id][newIdx];
-    this._tabHistoryIdx[id] = newIdx;
 
     const label = this._labels[id];
-    if (label) await window.__TAURI__.core.invoke('navigate_webview', { label, url });
+    if (label) {
+      try {
+        await window.__TAURI__.core.invoke('navigate_webview', { label, url });
+      } catch (err) {
+        console.error('[tabs] navigateBack: navigate_webview failed:', err);
+        return;
+      }
+    }
+
+    // Update state only after successful navigation
+    this._tabHistoryIdx[id] = newIdx;
 
     const tab = this.tabs.find((t) => t.id === id);
     if (tab) { tab.url = url; tab.title = url; }
@@ -221,10 +238,19 @@ const TabManager = {
 
     const newIdx = idx + 1;
     const url = stack[newIdx];
-    this._tabHistoryIdx[id] = newIdx;
 
     const label = this._labels[id];
-    if (label) await window.__TAURI__.core.invoke('navigate_webview', { label, url });
+    if (label) {
+      try {
+        await window.__TAURI__.core.invoke('navigate_webview', { label, url });
+      } catch (err) {
+        console.error('[tabs] navigateForward: navigate_webview failed:', err);
+        return;
+      }
+    }
+
+    // Update state only after successful navigation
+    this._tabHistoryIdx[id] = newIdx;
 
     const tab = this.tabs.find((t) => t.id === id);
     if (tab) { tab.url = url; tab.title = url; }
@@ -247,7 +273,11 @@ const TabManager = {
     const label = this._labels[id];
     if (!label) return;
     const target = tab.url || `${window.location.origin}/pages/newtab.html`;
-    await window.__TAURI__.core.invoke('navigate_webview', { label, url: target });
+    try {
+      await window.__TAURI__.core.invoke('navigate_webview', { label, url: target });
+    } catch (err) {
+      console.error('[tabs] reload: navigate_webview failed:', err);
+    }
     console.log('[tabs] reload:', target);
   },
 
@@ -262,7 +292,11 @@ const TabManager = {
 
     const wv = this._webviews[id];
     if (wv) {
-      await wv.close();
+      try {
+        await wv.close();
+      } catch (err) {
+        console.error('[tabs] closeTab: wv.close() failed:', err);
+      }
       delete this._webviews[id];
       delete this._labels[id];
     }
@@ -306,17 +340,24 @@ const TabManager = {
     await new Promise((r) => requestAnimationFrame(r));
     const rect = this._getContentRect();
     console.log('[tabs] switchTo rect:', JSON.stringify(rect));
-    const { LogicalPosition, LogicalSize } = window.__TAURI__.dpi;
+
+    const dpi = window.__TAURI__?.dpi;
+    if (!dpi) {
+      console.error('[tabs] switchTo: window.__TAURI__.dpi not available');
+      return;
+    }
+    const { LogicalPosition, LogicalSize } = dpi;
+    const offset = await this._getFrameOffset();
 
     for (const t of this.tabs) {
       const wv = this._webviews[t.id];
       if (!wv) continue;
       if (t.id === id) {
-        console.log('[tabs] positioning webview', t.id, 'at', rect.x, rect.y, rect.width, rect.height);
+        console.log('[tabs] positioning webview', t.id, 'at', rect.x + offset.x, rect.y + offset.y, rect.width, rect.height);
         // Show first, then reposition — setPosition may be ignored on
         // hidden webviews on some platforms.
         await wv.show();
-        await wv.setPosition(new LogicalPosition(rect.x, rect.y));
+        await wv.setPosition(new LogicalPosition(rect.x + offset.x, rect.y + offset.y));
         await wv.setSize(new LogicalSize(rect.width, rect.height));
         console.log('[tabs] webview shown:', t.id);
       } else {
@@ -391,14 +432,14 @@ const TabManager = {
 
       el.addEventListener('click', (e) => {
         if (/** @type {HTMLElement} */ (e.target).dataset.close) return;
-        this.switchTo(tab.id);
+        this.switchTo(tab.id).catch((err) => console.error('[tabs] switchTo failed:', err));
       });
 
       const closeBtn = el.querySelector('.tab-close');
       if (closeBtn) {
         closeBtn.addEventListener('click', (e) => {
           e.stopPropagation();
-          this.closeTab(tab.id);
+          this.closeTab(tab.id).catch((err) => console.error('[tabs] closeTab failed:', err));
         });
       }
 
@@ -432,9 +473,12 @@ const TabManager = {
     const wv = this._webviews[id];
     if (!wv) return;
 
+    const dpi = window.__TAURI__?.dpi;
+    if (!dpi) return;
+    const { LogicalPosition, LogicalSize } = dpi;
     const rect = this._getContentRect();
-    const { LogicalPosition, LogicalSize } = window.__TAURI__.dpi;
-    await wv.setPosition(new LogicalPosition(rect.x, rect.y));
+    const offset = await this._getFrameOffset();
+    await wv.setPosition(new LogicalPosition(rect.x + offset.x, rect.y + offset.y));
     await wv.setSize(new LogicalSize(rect.width, rect.height));
   },
 
@@ -457,6 +501,35 @@ const TabManager = {
     };
     console.log('[tabs] _getContentRect:', rect);
     return rect;
+  },
+
+  /**
+   * Compute the window frame offset (CSD titlebar height on Linux) in logical pixels.
+   * On platforms where child-webview positions are relative to the outer window frame
+   * rather than the HTML viewport, this offset must be added to getBoundingClientRect
+   * values when calling setPosition.  Result is cached after the first successful call.
+   * @returns {Promise<{ x: number, y: number }>}
+   */
+  async _getFrameOffset() {
+    if (this._frameOffset !== null) return this._frameOffset;
+    try {
+      const { getCurrentWindow } = window.__TAURI__.window;
+      const win = getCurrentWindow();
+      const [inner, outer, scale] = await Promise.all([
+        win.innerPosition(),
+        win.outerPosition(),
+        win.scaleFactor(),
+      ]);
+      this._frameOffset = {
+        x: (inner.x - outer.x) / scale,
+        y: (inner.y - outer.y) / scale,
+      };
+      console.log('[tabs] frame offset:', JSON.stringify(this._frameOffset));
+    } catch (err) {
+      console.warn('[tabs] _getFrameOffset failed, using zero offset:', err);
+      this._frameOffset = { x: 0, y: 0 };
+    }
+    return this._frameOffset;
   },
 
   /**
