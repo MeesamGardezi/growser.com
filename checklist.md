@@ -5,39 +5,39 @@
 ---
 
 ### Navigation Engine
-- [ ] **#13 — Load progress indicator** — listen for load-start/load-end events, show spinner or progress bar in toolbar
-- [ ] **#14 — Page title listener** — inject script into child webviews to read `document.title` and post it back to the shell
+- [x] **#13 — Load progress indicator** — listen for load-start/load-end events, show spinner or progress bar in toolbar
+- [x] **#14 — Page title listener** — inject script into child webviews to read `document.title` and post it back to the shell
 - [ ] **#15 — URL change listener** — inject `MutationObserver` / history API hooks so the omnibox updates when a page navigates internally
 
 ### Tab System
 - [ ] **#16 — Favicon extraction** — parse `<link rel="icon">` from loaded pages or fetch from `icon.horse`, cache locally
-- [ ] **#19 — Session tab persistence** — write open tabs to `session_tabs` on close, restore on relaunch
-- [ ] **#20 — New tab page polish** — improve `newtab.html` (search box, recent sites, shortcuts)
-- [ ] **#21 — Tab limit handling** — soft-warn at 30 tabs, configurable hard cap
+- [x] **#19 — Session tab persistence** — write open tabs to `session_tabs` on close, restore on relaunch
+- [x] **#20 — New tab page polish** — improve `newtab.html` (search box, recent sites, shortcuts)
+- [ ] **#21 — Tab limit handling** — soft-  warn at 30 tabs, configurable hard cap
 - [ ] **#37 — Tab drag-to-reorder** — drag handle + reorder logic in tab bar and sidebar
 
 ### Search / Omnibox
-- [ ] **#31 — Read search engine from settings** — load the stored setting instead of hardcoded DuckDuckGo
+- [x] **#31 — Read search engine from settings** — load the stored setting instead of hardcoded DuckDuckGo
 - [ ] **#33 — Omnibox suggestions** — query history FTS as user types, debounced, populate `#suggestions` dropdown
 - [ ] **#34 — Suggestion ranking** — frecency scoring: `visit_count * decay(last_visited)`
 - [ ] **#35 — Keyboard navigation** — arrow keys through suggestion list, Enter commits
 
 ### History
-- [ ] **#23 — Write history entries** — upsert into `history` table on every successful page load
+- [x] **#23 — Write history entries** — upsert into `history` table on every successful page load
 - [ ] **#24 — Read history** — paginated query, sorted by `last_visited DESC`
 - [ ] **#25 — History search** — SQLite FTS5 virtual table on `url` + `title`
 - [ ] **#26/#27 — Delete / clear history** — single-row delete + clear-all with vacuum
 - [ ] **#28 — History UI** — dedicated page at `browser://history`
 
 ### UI Shell
-- [ ] **#38 — Status bar** — show hovered link URL, load state
+- [x] **#38 — Status bar** — show hovered link URL, load state
 - [ ] **#39 — Favicon fetcher + cache** — fetch, cache to `AppCache`, display in tabs
 - [ ] **#41 — Context menu** — right-click handler injected into tab webviews
-- [ ] **#42 — Dark theme** — CSS variables for dark mode + `prefers-color-scheme` support
+- [x] **#42 — Dark theme** — CSS variables for dark mode + `prefers-color-scheme` support
 - [ ] **Menu button** — wire up click handler with dropdown options
 
 ### Settings
-- [ ] **#43 — Read/apply settings at runtime** — load from `settings` table on boot, apply theme/homepage/search engine
+- [x] **#43 — Read/apply settings at runtime** — load from `settings` table on boot, apply theme/homepage/search engine
 - [ ] **#44 — Settings UI** — local page at `browser://settings`
 - [ ] **#45 — Homepage setting** — configurable start page
 - [ ] **#46 — Search engine setting** — dropdown of presets + custom URL template
@@ -57,4 +57,4 @@
 - [ ] **#57 — Permission requests** — intercept and optionally re-style WebView permission prompts
 
 ### Cleanup
-- [ ] **Remove dead `ipc.ts`** — nothing imports it; `tabs.ts` uses `invoke` directly from `@tauri-apps/api/core`
+- [x] **Remove dead `ipc.ts`** — nothing imports it; `tabs.ts` uses `invoke` directly from `@tauri-apps/api/core`

@@ -15,26 +15,138 @@
       background: #ffffff;
       color: #1a1a2e;
     }
+    @media (prefers-color-scheme: dark) {
+      body { background: #1e1e2e; color: #e2e2f0; }
+      .search-input { background: #282839; border-color: #3a3a52; color: #e2e2f0; }
+      .search-input:focus { border-color: #6ea1f7; box-shadow: 0 0 0 3px rgba(110,161,247,0.15); }
+      .shortcut { background: #282839; color: #e2e2f0; }
+      .shortcut:hover { background: #33334a; }
+      .shortcut-letter { background: #3a3a52; color: #8888a4; }
+    }
     .center {
       text-align: center;
+      width: 100%;
+      max-width: 560px;
+      padding: 0 24px;
     }
     h1 {
       font-size: 1.8rem;
       font-weight: 300;
       color: #3b82f6;
-      margin-bottom: 6px;
+      margin-bottom: 24px;
       letter-spacing: -0.02em;
     }
-    p {
-      font-size: 0.85rem;
-      color: #9ca3af;
+    .search-box {
+      position: relative;
+      margin-bottom: 36px;
+    }
+    .search-input {
+      width: 100%;
+      height: 44px;
+      padding: 0 18px;
+      border: 1px solid #e5e7eb;
+      border-radius: 22px;
+      background: #f8f9fb;
+      color: #1a1a2e;
+      font-size: 14px;
+      outline: none;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .search-input:focus {
+      border-color: #3b82f6;
+      box-shadow: 0 0 0 3px rgba(59,130,246,0.12);
+    }
+    .shortcuts {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+    }
+    .shortcut {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      padding: 16px 8px;
+      border-radius: 12px;
+      background: #f8f9fb;
+      text-decoration: none;
+      color: #1a1a2e;
+      cursor: pointer;
+      transition: background 0.15s;
+      border: none;
+      font-family: inherit;
+    }
+    .shortcut:hover {
+      background: #e8e9ed;
+    }
+    .shortcut-letter {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: #e5e7eb;
+      color: #6b7280;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      font-weight: 600;
+    }
+    .shortcut-label {
+      font-size: 11px;
+      color: #6b7280;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      max-width: 100%;
     }
   </style>
 </head>
 <body>
   <div class="center">
     <h1>Growser</h1>
-    <p>Type a URL or search in the address bar</p>
+    <div class="search-box">
+      <input
+        class="search-input"
+        type="text"
+        placeholder="Search the web or enter a URL"
+        autofocus
+        id="search"
+      />
+    </div>
+    <div class="shortcuts" id="shortcuts">
+      <a class="shortcut" href="https://www.google.com">
+        <div class="shortcut-letter">G</div>
+        <span class="shortcut-label">Google</span>
+      </a>
+      <a class="shortcut" href="https://github.com">
+        <div class="shortcut-letter">GH</div>
+        <span class="shortcut-label">GitHub</span>
+      </a>
+      <a class="shortcut" href="https://en.wikipedia.org">
+        <div class="shortcut-letter">W</div>
+        <span class="shortcut-label">Wikipedia</span>
+      </a>
+      <a class="shortcut" href="https://www.youtube.com">
+        <div class="shortcut-letter">YT</div>
+        <span class="shortcut-label">YouTube</span>
+      </a>
+    </div>
   </div>
+  <script>
+    const searchInput = document.getElementById('search');
+    searchInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        const val = searchInput.value.trim();
+        if (!val) return;
+        // If it looks like a URL, navigate directly; otherwise search
+        if (/^https?:\/\//i.test(val) || /^[\w-]+(\.[\w-]+)+/.test(val)) {
+          const url = val.startsWith('http') ? val : 'https://' + val;
+          window.location.href = url;
+        } else {
+          window.location.href = 'https://www.google.com/search?q=' + encodeURIComponent(val);
+        }
+      }
+    });
+  </script>
 </body>
 </html>

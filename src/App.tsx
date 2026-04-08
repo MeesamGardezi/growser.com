@@ -12,10 +12,13 @@ import {
   resizeActiveWebview,
   hideAllWebviews,
   showActiveWebview,
+  statusText,
+  isLoading,
 } from './lib/tabs';
 import TabBar from './components/TabBar';
 import Sidebar from './components/Sidebar';
 import Toolbar from './components/Toolbar';
+import { loadSettings } from './lib/settings';
 
 export default function App() {
   const [showFullscreen, setShowFullscreen] = createSignal(true);
@@ -51,6 +54,13 @@ export default function App() {
       await initDB();
     } catch (err) {
       console.error('[app] DB init failed:', err);
+    }
+
+    // Load settings (theme, homepage, search engine)
+    try {
+      await loadSettings();
+    } catch (err) {
+      console.error('[app] loadSettings failed:', err);
     }
 
     // First tab
@@ -116,9 +126,15 @@ export default function App() {
         <div id="main-col">
           <TabBar />
           <Toolbar />
-          <div id="content-area" />
+          <div id="content-area">
+            <div
+              id="load-progress"
+              classList={{ hidden: !isLoading() }}
+              style={{ width: isLoading() ? '80%' : '0%' }}
+            />
+          </div>
           <div id="status-bar">
-            <span id="status-text" />
+            <span id="status-text">{statusText()}</span>
           </div>
         </div>
       </div>

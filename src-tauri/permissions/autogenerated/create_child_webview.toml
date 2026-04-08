@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-create-child-webview"
+description = "Enables the create_child_webview command without any pre-configured scope."
+commands.allow = ["create_child_webview"]
+
+[[permission]]
+identifier = "deny-create-child-webview"
+description = "Denies the create_child_webview command without any pre-configured scope."
+commands.deny = ["create_child_webview"]

@@ -10,6 +10,7 @@ import {
   toggleVerticalTabs,
 } from '../lib/tabs';
 import { resolve } from '../lib/navigation';
+import { searchEngine } from '../lib/settings';
 
 export default function Toolbar() {
   const [omniboxValue, setOmniboxValue] = createSignal('');
@@ -23,11 +24,13 @@ export default function Toolbar() {
   async function doNavigate() {
     const raw = omniboxValue().trim();
     if (!raw) return;
-    const url = resolve(raw);
+    const url = resolve(raw, searchEngine());
     if (!url) return;
     await navigateTo(url);
     omniboxRef.blur();
   }
+
+  let selectOnNextMouseUp = false;
 
   return (
     <div id="toolbar">
@@ -59,7 +62,16 @@ export default function Toolbar() {
               doNavigate();
             }
           }}
-          onFocus={() => omniboxRef.select()}
+          onFocus={() => {
+            omniboxRef.select();
+            selectOnNextMouseUp = true;
+          }}
+          onMouseUp={() => {
+            if (selectOnNextMouseUp) {
+              selectOnNextMouseUp = false;
+              omniboxRef.select();
+            }
+          }}
         />
         <div id="suggestions" class="hidden" />
       </div>

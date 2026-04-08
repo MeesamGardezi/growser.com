@@ -9,9 +9,39 @@
   --accent: #3b82f6;
   --toolbar-h: 42px;
   --tabbar-h: 38px;
-  --statusbar-h: 0px;
+  --statusbar-h: 24px;
   --radius: 3px;
   --sidebar-w: 220px;
+}
+
+/* Dark theme — applied via data attribute or system preference */
+[data-theme="dark"],
+:root:not([data-theme="light"]) {
+  /* only activate if system prefers dark and no explicit light override */
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #1e1e2e;
+    --bg-surface: #282839;
+    --bg-hover: #33334a;
+    --bg-active: #3e3e58;
+    --text: #e2e2f0;
+    --text-muted: #8888a4;
+    --border: #3a3a52;
+    --accent: #6ea1f7;
+  }
+}
+
+[data-theme="dark"] {
+  --bg: #1e1e2e;
+  --bg-surface: #282839;
+  --bg-hover: #33334a;
+  --bg-active: #3e3e58;
+  --text: #e2e2f0;
+  --text-muted: #8888a4;
+  --border: #3a3a52;
+  --accent: #6ea1f7;
 }
 
 * {
@@ -330,6 +360,22 @@ html, body {
   position: relative;
   overflow: hidden;
   background: transparent;
+}
+
+/* ── Progress bar ── */
+#load-progress {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 2px;
+  background: var(--accent);
+  z-index: 50;
+  transition: width 0.3s ease;
+  pointer-events: none;
+}
+
+#load-progress.hidden {
+  display: none;
 }
 
 /* ── Status bar ── */

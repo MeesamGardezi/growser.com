@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-report-page-title"
+description = "Enables the report_page_title command without any pre-configured scope."
+commands.allow = ["report_page_title"]
+
+[[permission]]
+identifier = "deny-report-page-title"
+description = "Denies the report_page_title command without any pre-configured scope."
+commands.deny = ["report_page_title"]

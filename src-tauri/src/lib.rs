@@ -1,4 +1,3 @@
-use tauri::Manager;
 use tauri_plugin_sql::{Builder as SqlBuilder, Migration, MigrationKind};
 
 mod commands;
@@ -20,7 +19,16 @@ pub fn run() {
                 .build(),
         )
         .plugin(tauri_plugin_fs::init())
-        .invoke_handler(tauri::generate_handler![commands::navigate_webview])
+        .invoke_handler(tauri::generate_handler![
+            commands::navigate_webview,
+            commands::create_child_webview,
+            commands::report_page_title,
+            commands::show_webview,
+            commands::hide_webview,
+            commands::close_webview,
+            commands::set_webview_position,
+            commands::set_webview_size,
+        ])
         .setup(|_app| {
             Ok(())
         })

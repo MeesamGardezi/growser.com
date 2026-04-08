@@ -1,8 +1,9 @@
 import { createSignal, createMemo } from 'solid-js';
 import { createStore, produce } from 'solid-js/store';
-import { Webview } from '@tauri-apps/api/webview';
-import { getCurrentWindow, LogicalPosition, LogicalSize } from '@tauri-apps/api/window';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
+import { recordVisit, saveSessionTabs, loadSessionTabs } from './db';
 
 // ─── Types ───
 
@@ -19,6 +20,8 @@ export interface Tab {
 export const [tabs, setTabs] = createStore<Tab[]>([]);
 export const [activeTabId, setActiveTabId] = createSignal<string | null>(null);
 export const [isVerticalTabs, setIsVerticalTabs] = createSignal(false);
+export const [statusText, setStatusText] = createSignal('');
+export const [isLoading, setIsLoading] = createSignal(false);
 
 // ─── Derived state ───
 
@@ -40,13 +43,14 @@ export const canGoForward = createMemo(() => {
 
 // ─── Internal (non-reactive) state ───
 
-const webviews: Record<string, InstanceType<typeof Webview>> = {};
 const wvLabels: Record<string, string> = {};
+const labelToTabId: Record<string, string> = {};
 const histories: Record<string, string[]> = {};
 const historyIdx: Record<string, number> = {};
 let nextId = 1;
 let nextWvId = Date.now();
 let frameOffset: { x: number; y: number; cssToLogical: number } | null = null;
+let eventListenersInitialized = false;
 
 // ─── Internal helpers ───
 
@@ -89,37 +93,76 @@ async function createWebview(
   url: string,
   rect: { x: number; y: number; width: number; height: number },
 ) {
-  const mainWindow = getCurrentWindow();
-  const webview = new Webview(mainWindow, label, {
+  const offset = await getFrameOffset();
+  const cx = offset.cssToLogical;
+  await invoke('create_child_webview', {
+    label,
     url,
-    x: rect.x,
-    y: rect.y,
-    width: rect.width,
-    height: rect.height,
+    x: rect.x * cx + offset.x,
+    y: rect.y * cx + offset.y,
+    width: rect.width * cx,
+    height: rect.height * cx,
+  });
+  await invoke('hide_webview', { label });
+}
+
+/** Set up event listeners for page load / title events from Rust */
+async function initEventListeners() {
+  if (eventListenersInitialized) return;
+  eventListenersInitialized = true;
+
+  await listen<{ label: string; url: string }>('page-load-started', (event) => {
+    const tabId = labelToTabId[event.payload.label];
+    if (tabId && !event.payload.url.includes('/pages/newtab.html')) {
+      setIsLoading(true);
+      setStatusText(`Loading ${event.payload.url}…`);
+    }
   });
 
-  await new Promise<void>((resolve, reject) => {
-    const timeout = setTimeout(
-      () => reject(new Error(`Webview creation timed out: ${label}`)),
-      10000,
-    );
-    webview.once('tauri://created', () => {
-      clearTimeout(timeout);
-      resolve();
-    });
-    webview.once('tauri://error', (e: any) => {
-      clearTimeout(timeout);
-      reject(e);
-    });
+  await listen<{ label: string; url: string }>('page-load-finished', (event) => {
+    const tabId = labelToTabId[event.payload.label];
+    if (tabId) {
+      setIsLoading(false);
+      setStatusText('');
+      // Update URL for the tab (skip newtab page)
+      const url = event.payload.url;
+      const isNewtab = url.includes('/pages/newtab.html');
+      if (!isNewtab) {
+        setTabs(
+          produce((draft) => {
+            const t = draft.find((tab) => tab.id === tabId);
+            if (t && url && !url.startsWith('about:') && url !== t.url) {
+              t.url = url;
+            }
+          }),
+        );
+      }
+    }
   });
 
-  await webview.hide();
-  return webview;
+  await listen<{ label: string; title: string; url: string }>('page-title-changed', (event) => {
+    const tabId = labelToTabId[event.payload.label];
+    if (tabId && event.payload.title) {
+      setTabs(
+        produce((draft) => {
+          const t = draft.find((tab) => tab.id === tabId);
+          if (t) {
+            t.title = event.payload.title;
+            if (event.payload.url) t.url = event.payload.url;
+          }
+        }),
+      );
+      // Update history title
+      recordVisit(event.payload.url || '', event.payload.title).catch(() => {});
+    }
+  });
 }
 
 // ─── Public actions ───
 
 export async function createTab(url = '') {
+  await initEventListeners();
+
   const id = `tab-${nextId++}`;
   const wvLabel = `wv-${nextWvId++}`;
 
@@ -134,12 +177,11 @@ export async function createTab(url = '') {
   setTabs(produce((draft) => draft.push(tab)));
 
   const rect = getContentRect();
-  const wvUrl = url || `${window.location.origin}/pages/newtab.html`;
 
   try {
-    const webview = await createWebview(wvLabel, wvUrl, rect);
-    webviews[id] = webview;
+    await createWebview(wvLabel, url, rect);
     wvLabels[id] = wvLabel;
+    labelToTabId[wvLabel] = id;
   } catch (err) {
     console.error('[tabs] createTab: webview creation failed:', err);
     setTabs((t) => t.filter((t) => t.id !== id));
@@ -161,12 +203,12 @@ export async function closeTab(id: string) {
   const idx = tabs.findIndex((t) => t.id === id);
   if (idx === -1) return;
 
-  const wv = webviews[id];
-  if (wv) {
+  const label = wvLabels[id];
+  if (label) {
     try {
-      await wv.close();
+      await invoke('close_webview', { label });
     } catch {}
-    delete webviews[id];
+    delete labelToTabId[label];
     delete wvLabels[id];
   }
   delete histories[id];
@@ -202,15 +244,23 @@ export async function switchTo(id: string) {
   const offset = await getFrameOffset();
 
   for (const t of tabs) {
-    const wv = webviews[t.id];
-    if (!wv) continue;
+    const label = wvLabels[t.id];
+    if (!label) continue;
     if (t.id === id) {
       const cx = offset.cssToLogical;
-      await wv.show();
-      await wv.setPosition(new LogicalPosition(rect.x * cx + offset.x, rect.y * cx + offset.y));
-      await wv.setSize(new LogicalSize(rect.width * cx, rect.height * cx));
+      await invoke('show_webview', { label });
+      await invoke('set_webview_position', {
+        label,
+        x: rect.x * cx + offset.x,
+        y: rect.y * cx + offset.y,
+      });
+      await invoke('set_webview_size', {
+        label,
+        width: rect.width * cx,
+        height: rect.height * cx,
+      });
     } else {
-      await wv.hide();
+      await invoke('hide_webview', { label });
     }
   }
 }
@@ -222,6 +272,9 @@ export async function navigateTo(url: string) {
   if (!label) return;
 
   await invoke('navigate_webview', { label, url });
+
+  // Record in history (fire-and-forget)
+  recordVisit(url).catch((e) => console.error('[tabs] recordVisit failed:', e));
 
   const idx = historyIdx[id] ?? -1;
   const stack = histories[id] ?? [];
@@ -316,25 +369,52 @@ export function invalidateFrameOffset() {
 export async function resizeActiveWebview() {
   const id = activeTabId();
   if (!id) return;
-  const wv = webviews[id];
-  if (!wv) return;
+  const label = wvLabels[id];
+  if (!label) return;
   const rect = getContentRect();
   const offset = await getFrameOffset();
   const cx = offset.cssToLogical;
-  await wv.setPosition(new LogicalPosition(rect.x * cx + offset.x, rect.y * cx + offset.y));
-  await wv.setSize(new LogicalSize(rect.width * cx, rect.height * cx));
+  await invoke('set_webview_position', {
+    label,
+    x: rect.x * cx + offset.x,
+    y: rect.y * cx + offset.y,
+  });
+  await invoke('set_webview_size', {
+    label,
+    width: rect.width * cx,
+    height: rect.height * cx,
+  });
 }
 
 export async function hideAllWebviews() {
-  for (const id of Object.keys(webviews)) {
-    const wv = webviews[id];
-    if (wv) await wv.hide();
+  for (const id of Object.keys(wvLabels)) {
+    const label = wvLabels[id];
+    if (label) await invoke('hide_webview', { label }).catch(() => {});
   }
 }
 
 export async function showActiveWebview() {
   const id = activeTabId();
   if (!id) return;
-  const wv = webviews[id];
-  if (wv) await wv.show();
+  const label = wvLabels[id];
+  if (label) await invoke('show_webview', { label });
+}
+
+/** Save all open tabs to the DB for session restore */
+export async function saveSession() {
+  const openTabs = tabs
+    .filter((t) => t.url)
+    .map((t, i) => ({ url: t.url, title: t.title, order: i }));
+  await saveSessionTabs(openTabs);
+}
+
+/** Restore tabs from the previous session. Returns true if any were restored. */
+export async function restoreSession(): Promise<boolean> {
+  const saved = await loadSessionTabs();
+  const withUrls = saved.filter((t) => t.url);
+  if (withUrls.length === 0) return false;
+  for (const t of withUrls) {
+    await createTab(t.url);
+  }
+  return true;
 }
